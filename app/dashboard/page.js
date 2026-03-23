@@ -4,30 +4,41 @@ import { supabase } from "@/lib/supabase"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 
-export default function Dashboard() {
-  const router = useRouter()
-  const [flavors, setFlavors] = useState([])
-  const [loading, setLoading] = useState(true)
+function useTheme() {
   const [theme, setTheme] = useState("dark")
 
   useEffect(() => {
     const saved = localStorage.getItem("theme") || "dark"
     setTheme(saved)
-    applyTheme(saved)
-    checkAndFetch()
   }, [])
-
-  function applyTheme(t) {
-    const isDark = t === "dark" || (t === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)
-    document.documentElement.classList.toggle("dark", isDark)
-  }
 
   function toggleTheme() {
     const next = theme === "dark" ? "light" : theme === "light" ? "system" : "dark"
     setTheme(next)
     localStorage.setItem("theme", next)
-    applyTheme(next)
   }
+
+  const systemDark = typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches
+  const isDark = theme === "dark" || (theme === "system" && systemDark)
+
+  return { theme, toggleTheme, isDark }
+}
+
+export default function Dashboard() {
+  const router = useRouter()
+  const [flavors, setFlavors] = useState([])
+  const [loading, setLoading] = useState(true)
+  const { theme, toggleTheme, isDark } = useTheme()
+
+  const styles = {
+    bg: isDark ? "bg-gray-950" : "bg-gray-100",
+    card: isDark ? "bg-gray-900 border-gray-700" : "bg-white border-gray-200",
+    text: isDark ? "text-white" : "text-gray-900",
+    subtext: isDark ? "text-gray-400" : "text-gray-500",
+    themeBtn: isDark ? "bg-gray-700 hover:bg-gray-600 text-white" : "bg-gray-200 hover:bg-gray-300 text-gray-900",
+  }
+
+  useEffect(() => { checkAndFetch() }, [])
 
   async function checkAndFetch() {
     const { data: { user } } = await supabase.auth.getUser()
@@ -43,7 +54,6 @@ export default function Dashboard() {
     if (!profile?.is_superadmin && !profile?.is_matrix_admin && !allowedEmails.includes(user.email)) {
       router.push("/"); return
     }
-
     fetchFlavors()
   }
 
@@ -73,16 +83,16 @@ export default function Dashboard() {
   )
 
   return (
-    <main className="min-h-screen bg-gray-950 dark:bg-gray-950 bg-gray-100 p-8 transition-colors">
+    <main className={`min-h-screen ${styles.bg} p-8 transition-colors duration-300`}>
       <div className="flex justify-between items-center mb-10">
         <div>
           <h1 className="text-4xl font-black bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
             😂 Humor Flavor Tool
           </h1>
-          <p className="text-gray-400 mt-1">Manage humor flavors and prompt chains</p>
+          <p className={`${styles.subtext} mt-1`}>Manage humor flavors and prompt chains</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={toggleTheme} className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm transition">
+          <button onClick={toggleTheme} className={`${styles.themeBtn} px-4 py-2 rounded-lg text-sm transition`}>
             {themeIcon}
           </button>
           <button onClick={signOut} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm transition">
@@ -92,7 +102,7 @@ export default function Dashboard() {
       </div>
 
       <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-white">Humor Flavors</h2>
+        <h2 className={`text-2xl font-bold ${styles.text}`}>Humor Flavors</h2>
         <Link href="/flavors/new" className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">
           + New Flavor
         </Link>
@@ -100,10 +110,10 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 gap-4">
         {flavors.map((flavor) => (
-          <div key={flavor.id} className="bg-gray-900 border border-gray-700 rounded-2xl p-6 flex justify-between items-center">
+          <div key={flavor.id} className={`border rounded-2xl p-6 flex justify-between items-center ${styles.card}`}>
             <div>
-              <h3 className="text-lg font-bold text-white">{flavor.slug}</h3>
-              <p className="text-sm text-gray-400 mt-1">{flavor.description || "No description"}</p>
+              <h3 className={`text-lg font-bold ${styles.text}`}>{flavor.slug}</h3>
+              <p className={`text-sm ${styles.subtext} mt-1`}>{flavor.description || "No description"}</p>
             </div>
             <div className="flex gap-2 flex-wrap justify-end">
               <Link href={`/flavors/${flavor.id}`} className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm transition">
@@ -125,9 +135,9 @@ export default function Dashboard() {
           </div>
         ))}
         {flavors.length === 0 && (
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-12 text-center">
+          <div className={`border rounded-2xl p-12 text-center ${styles.card}`}>
             <p className="text-5xl mb-4">😶</p>
-            <p className="text-gray-400 text-lg">No humor flavors yet. Create your first one!</p>
+            <p className={`${styles.subtext} text-lg`}>No humor flavors yet. Create your first one!</p>
           </div>
         )}
       </div>
