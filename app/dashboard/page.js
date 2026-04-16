@@ -28,6 +28,8 @@ export default function Dashboard() {
   const router = useRouter()
   const [flavors, setFlavors] = useState([])
   const [loading, setLoading] = useState(true)
+  const [duplicating, setDuplicating] = useState(null)
+  const [user, setUser] = useState(null)
   const { theme, toggleTheme, isDark } = useTheme()
 
   const styles = {
@@ -43,6 +45,7 @@ export default function Dashboard() {
   async function checkAndFetch() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push("/"); return }
+    setUser(user)
 
     const allowedEmails = ["inabiha820@gmail.com"]
     const { data: profile } = await supabase
@@ -67,6 +70,77 @@ export default function Dashboard() {
     if (!confirm("Delete this humor flavor?")) return
     await supabase.from("humor_flavors").delete().eq("id", id)
     fetchFlavors()
+  }
+
+  async function duplicateFlavor(flavor) {
+    // Ask for a new unique slug
+    const newSlug = prompt(`Enter a new unique slug for the duplicate of "${flavor.slug}":`, `${flavor.slug}-copy`)
+    if (!newSlug || !newSlug.trim()) return
+    const trimmedSlug = newSlug.trim()
+
+    // Check slug is unique
+    const { data: existing } = await supabase.from("humor_flavors").select("id").eq("slug", trimmedSlug).single()
+    if (existing) {
+      alert(`A flavor with slug "${trimmedSlug}" already exists. Please choose a different name.`)
+      return
+    }
+
+    setDuplicating(flavor.id)
+
+    try {
+      // Step 1: Create the new flavor
+      const { data: newFlavor, error: flavorError } = await supabase
+        .from("humor_flavors")
+        .insert({
+          slug: trimmedSlug,
+          description: flavor.description ? `Copy of ${flavor.description}` : `Copy of ${flavor.slug}`,
+          is_pinned: false,
+          created_by_user_id: user.id,
+          modified_by_user_id: user.id,
+        })
+        .select()
+        .single()
+
+      if (flavorError) throw flavorError
+
+      // Step 2: Fetch all steps for the original flavor
+      const { data: steps, error: stepsError } = await supabase
+        .from("humor_flavor_steps")
+        .select("*")
+        .eq("humor_flavor_id", flavor.id)
+        .order("order_by", { ascending: true })
+
+      if (stepsError) throw stepsError
+
+      // Step 3: Insert copies of all steps pointing to the new flavor
+      if (steps && steps.length > 0) {
+        const newSteps = steps.map(step => ({
+          humor_flavor_id: newFlavor.id,
+          llm_temperature: step.llm_temperature,
+          order_by: step.order_by,
+          llm_input_type_id: step.llm_input_type_id,
+          llm_output_type_id: step.llm_output_type_id,
+          llm_model_id: step.llm_model_id,
+          humor_flavor_step_type_id: step.humor_flavor_step_type_id,
+          llm_system_prompt: step.llm_system_prompt,
+          llm_user_prompt: step.llm_user_prompt,
+          description: step.description,
+          created_by_user_id: user.id,
+          modified_by_user_id: user.id,
+        }))
+
+        const { error: insertError } = await supabase.from("humor_flavor_steps").insert(newSteps)
+        if (insertError) throw insertError
+      }
+
+      alert(`✅ Successfully duplicated "${flavor.slug}" as "${trimmedSlug}" with ${steps?.length || 0} steps!`)
+      fetchFlavors()
+    } catch (err) {
+      console.error("Duplicate error:", err)
+      alert(`❌ Something went wrong: ${err.message}`)
+    }
+
+    setDuplicating(null)
   }
 
   async function signOut() {
@@ -128,6 +202,13 @@ export default function Dashboard() {
               <Link href={`/flavors/${flavor.id}/edit`} className="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-2 rounded-lg text-sm transition">
                 ✏️ Edit
               </Link>
+              <button
+                onClick={() => duplicateFlavor(flavor)}
+                disabled={duplicating === flavor.id}
+                className="bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-2 rounded-lg text-sm transition disabled:opacity-50"
+              >
+                {duplicating === flavor.id ? "⏳ Duplicating..." : "📋 Duplicate"}
+              </button>
               <button onClick={() => deleteFlavor(flavor.id)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded-lg text-sm transition">
                 🗑️ Delete
               </button>
